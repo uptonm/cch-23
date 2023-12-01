@@ -1,18 +1,13 @@
-use rocket::{get, routes};
+mod controllers;
+mod routes;
 
-#[get("/")]
-fn index() -> &'static str {
-    "Hello, world!"
-}
-
-#[get("/-1/error")]
-fn error() -> &'static str {
-    panic!()
-}
+use routes::{day_negative_one, day_one};
 
 #[shuttle_runtime::main]
 async fn main() -> shuttle_rocket::ShuttleRocket {
-    let rocket = rocket::build().mount("/", routes![index, error]);
+    let rocket = rocket::build()
+        .mount("/", day_negative_one::routes())
+        .mount("/1", day_one::routes());
 
     Ok(rocket.into())
 }
