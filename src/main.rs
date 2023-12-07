@@ -466,7 +466,7 @@ mod integration_tests {
                 }
             ]
         "#};
-        let response = client.post("/4/contest").body(&reindeer).dispatch();
+        let response = client.post("/4/contest").body(reindeer).dispatch();
         let expected_output = ContestResult {
             fastest: String::from("Speeding past the finish line with a strength of 5 is Dasher"),
             tallest: String::from("Dasher is standing tall with his 36 cm wide antlers"),
