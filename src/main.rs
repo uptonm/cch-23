@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use itertools::Itertools;
 use rocket::{
     get, post, routes,
     serde::{json::Json, Deserialize, Serialize},
@@ -260,12 +261,84 @@ struct ContestResult {
     consumer: String,
 }
 
+/// # 🎄 Day 6: Elf on a shelf
+/// It's that time of year when the elves hide on shelves to watch
+/// over the children of the world, reporting back to Santa on who's
+/// been naughty or nice. However, this year's reports have been mixed
+/// up with the rest of the letters to Santa, and the word "elf" is
+/// hidden throughout a mountain of text.
+///
+/// ## ⭐ Task 1: Never count on an elf
+/// Elves are notorious for their hide-and-seek skills, and now they've
+/// hidden themselves in strings of text!
+///
+/// Create an endpoint /6 that takes a POST request with a raw string as
+/// input and count how many times the substring "elf" appears.
+///
+/// The output should be a JSON object containing the count of the string "elf".
+///
+/// ### 💠 Examples
+/// ```sh
+/// curl -X POST http://localhost:8000/6 \
+///      -H 'Content-Type: text/plain' \
+///      -d 'The mischievous elf peeked out from behind the toy workshop,
+///          and another elf joined in the festive dance.
+///          Look, there is also an elf on that shelf!'
+///
+/// {"elf":4}
+/// ```
+/// ## 🎁 Task 2: Shelf under an elf? (200 bonus points)
+/// Add two fields to the response that counts:
+///
+/// The number of occurrences of the string "elf on a shelf" in a field with
+/// the same name.
+/// The number of shelves that don't have an elf on it. That is, the number
+/// of strings "shelf" that are not preceded by the string "elf on a ". Put
+/// this count in the field "shelf with no elf on it".
+///
+/// ### 💠 Example
+/// ```sh
+/// curl -X POST http://localhost:8000/6 \
+///      -H 'Content-Type: text/plain' \
+///      -d 'there is an elf on a shelf on an elf.
+///          there is also another shelf in Belfast.'
+///
+/// {"elf":5,"elf on a shelf":1,"shelf with no elf on it":1}
+/// ```
+#[post("/", data = "<text>")]
+fn elf_on_a_shelf(text: String) -> Json<ElvesOnShelves> {
+    let elf = text.matches("elf").count();
+    let elf_on_a_shelf = text.matches("elf on a shelf").count();
+    let shelf_with_no_elf_on_it = text
+        .matches("shelf")
+        .zip_longest(text.matches("elf on a shelf"))
+        .filter(|item| item.is_left())
+        .count();
+
+    Json(ElvesOnShelves {
+        elf,
+        elf_on_a_shelf,
+        shelf_with_no_elf_on_it,
+    })
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(crate = "rocket::serde")]
+struct ElvesOnShelves {
+    elf: usize,
+    #[serde(rename = "elf on a shelf")]
+    elf_on_a_shelf: usize,
+    #[serde(rename = "shelf with no elf on it")]
+    shelf_with_no_elf_on_it: usize,
+}
+
 fn ignite() -> Rocket<Build> {
     rocket::build()
         .mount("/", routes![hello_world])
         .mount("/-1", routes![error])
         .mount("/1", routes![cube_bits])
         .mount("/4", routes![reindeer_strength, candy_eating_contest])
+        .mount("/6", routes![elf_on_a_shelf])
 }
 
 #[shuttle_runtime::main]
@@ -362,10 +435,36 @@ mod unit_tests {
             json::to_pretty_string(&expected_output).unwrap()
         );
     }
+
+    #[test]
+    fn test_elf_on_a_shelf() {
+        let result1 = elf_on_a_shelf(String::from(
+            "The mischievous elf peeked out from behind the toy workshop,
+            and another elf joined in the festive dance.
+            Look, there is also an elf on that shelf!",
+        ))
+        .0;
+
+        assert_eq!(result1.elf, 4);
+        assert_eq!(result1.elf_on_a_shelf, 0);
+        assert_eq!(result1.shelf_with_no_elf_on_it, 1);
+
+        let result2 = elf_on_a_shelf(String::from(
+            "there is an elf on a shelf on an elf.
+            there is also another shelf in Belfast.",
+        ))
+        .0;
+
+        assert_eq!(result2.elf, 5);
+        assert_eq!(result2.elf_on_a_shelf, 1);
+        assert_eq!(result2.shelf_with_no_elf_on_it, 1);
+    }
 }
 
 #[cfg(test)]
 mod integration_tests {
+    use crate::ElvesOnShelves;
+
     use super::{ignite, ContestResult, Reindeer};
 
     use indoc::indoc;
@@ -472,6 +571,49 @@ mod integration_tests {
             tallest: String::from("Dasher is standing tall with his 36 cm wide antlers"),
             magician: String::from("Dasher could blast you away with a snow magic power of 9001"),
             consumer: String::from("Dancer ate lots of candies, but also some grass"),
+        };
+        assert_eq!(response.status(), Status::Ok);
+        assert_eq!(
+            json::from_str::<Value>(&response.into_string().unwrap()).unwrap(),
+            json::from_str::<Value>(&json!(expected_output).to_string()).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_elf_on_a_shelf() {
+        let client = get_client();
+        let response = client
+            .post("/6")
+            .body(indoc! {r#"
+                The mischievous elf peeked out from behind the toy workshop,
+                and another elf joined in the festive dance.
+                Look, there is also an elf on that shelf!
+            "#})
+            .dispatch();
+
+        let expected_output = ElvesOnShelves {
+            elf: 4,
+            elf_on_a_shelf: 0,
+            shelf_with_no_elf_on_it: 1,
+        };
+        assert_eq!(response.status(), Status::Ok);
+        assert_eq!(
+            json::from_str::<Value>(&response.into_string().unwrap()).unwrap(),
+            json::from_str::<Value>(&json!(expected_output).to_string()).unwrap()
+        );
+
+        let response = client
+            .post("/6")
+            .body(indoc! {r#"
+                there is an elf on a shelf on an elf.
+                there is also another shelf in Belfast.
+            "#})
+            .dispatch();
+
+        let expected_output = ElvesOnShelves {
+            elf: 5,
+            elf_on_a_shelf: 1,
+            shelf_with_no_elf_on_it: 1,
         };
         assert_eq!(response.status(), Status::Ok);
         assert_eq!(
